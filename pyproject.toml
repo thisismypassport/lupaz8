@@ -1,11 +1,12 @@
 [project]
-name = "lupa"
-description = "Python wrapper around Lua and LuaJIT"
+name = "lupaz8"
+description = "Python wrapper around z8lua (forked from lupa)"
 authors = [
-    {name="Stefan Behnel", email="stefan_ml@behnel.de"},
+    {name="Stefan Behnel", email="stefan_ml@behnel.de"}, # original author
+    {name="thisismypassport"},
 ]
 maintainers = [
-    {name="Lupa-dev mailing list", email="lupa-dev@freelists.org"},
+    {name="thisismypassport"},
 ]
 dynamic = ["classifiers", "license", "readme", "version"]
 requires-python = ">= 3.8"
@@ -15,9 +16,7 @@ requires-python = ">= 3.8"
 #license-files = ["LICENSE.txt"]
 
 [project.urls]
-Homepage = "https://github.com/scoder/lupa"
-Issues = "https://github.com/scoder/lupa/issues"
-Changelog = "https://github.com/scoder/lupa/blob/master/CHANGES.rst"
+Homepage = "https://github.com/thisismypassport/lupaz8"
 
 [build-system]
 requires = ["Cython>=3.2.4", "setuptools"]
@@ -39,11 +38,10 @@ enable = [
     "pypy",
     ]
 test-skip = ["*-macosx_*"]
-test-command = "python -c \"import lupa\" && python -c \"import lupa.lua54\" "
+test-command = "python -c \"import lupaz8\" && python -c \"import lupaz8.luaz8\" "
 
 [tool.cibuildwheel.windows]
 archs = ["AMD64", "x86", "ARM64"]
-test-command = "python -c \"import lupa\" && python -c \"import lupa.lua54\" && python -c \"import lupa.luajit21\" "
 
 [tool.cibuildwheel.macos]
 # https://cibuildwheel.readthedocs.io/en/stable/faq/#what-to-provide suggests to provide

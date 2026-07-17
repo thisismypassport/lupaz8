@@ -423,7 +423,7 @@ def prepare_extensions(use_cython=True):
 
     for config in configs:
         ext_name = config.get('libversion', 'lua')
-        src, dst = os.path.join('lupa', '_lupa.pyx'), os.path.join('lupa', ext_name + '.pyx')
+        src, dst = os.path.join('lupaz8', '_lupa.pyx'), os.path.join('lupaz8', ext_name + '.pyx')
         if not os.path.exists(dst) or os.path.getmtime(dst) < os.path.getmtime(src):
             with open(dst, 'wb') as f_out:
                 f_out.write(b'#######  DO NOT EDIT - BUILD TIME COPY OF "_lupa.pyx" #######\n\n')
@@ -432,16 +432,18 @@ def prepare_extensions(use_cython=True):
 
         libs = config.get('ext_libraries')
         ext_modules.append(Extension(
-            'lupa.' + ext_name,
+            'lupaz8.' + ext_name,
             sources=[dst] + (libs[0][1]['sources'] if libs else []),
             extra_objects=config.get('extra_objects'),
             include_dirs=config.get('include_dirs'),
+            extra_compile_args=['-std=c++17'], # for luaz8 only
+            language="c++", # for luaz8 only
             define_macros=c_defines,
             **extra_extension_args,
         ))
 
         if not use_cython:
-            if not os.path.exists(os.path.join(basedir, 'lupa', '_lupa.c')):
+            if not os.path.exists(os.path.join(basedir, 'lupaz8', '_lupa.c')):
                 print("generated sources not available, need Cython to build")
                 use_cython = True
 
@@ -481,18 +483,18 @@ long_description = '\n\n'.join([
     read_file(os.path.join(basedir, text_file))
     for text_file in ['README.rst', 'INSTALL.rst', 'CHANGES.rst', "LICENSE.txt"]])
 
-write_file(os.path.join(basedir, 'lupa', 'version.py'), f"__version__ = '{VERSION}'\n")
+write_file(os.path.join(basedir, 'lupaz8', 'version.py'), f"__version__ = '{VERSION}'\n")
 
 dll_files = []
 for config in configs:
     if config.get('libfile'):
         # include Lua DLL in the lib folder if we are on Windows
         dll_file = os.path.splitext(config['libfile'])[0] + ".dll"
-        shutil.copy(dll_file, os.path.join(basedir, 'lupa'))
+        shutil.copy(dll_file, os.path.join(basedir, 'lupaz8'))
         dll_files.append(os.path.basename(dll_file))
 
 if dll_files:
-    extra_setup_args['package_data'] = {'lupa': dll_files}
+    extra_setup_args['package_data'] = {'lupaz8': dll_files}
 
 cython_dependency = ([
     line for line in read_file(os.path.join(basedir, "requirements.txt")).splitlines()
@@ -501,8 +503,14 @@ cython_dependency = ([
 
 # call distutils
 
+from setuptools.command.build_ext import build_ext
+class BuildCAsCpp(build_ext):
+    def build_extensions(self):
+        self.compiler.compiler_so = [self.compiler.compiler_so[0], "-x", "c++", *self.compiler.compiler_so[1:]]
+        super().build_extensions()
+
 setup(
-    name="lupa",
+    name="lupaz8",
     version=VERSION,
     long_description=long_description,
     license="MIT",
@@ -518,9 +526,10 @@ setup(
         'Topic :: Software Development',
     ],
 
-    packages=['lupa'],
+    packages=['lupaz8'],
     setup_requires=[cython_dependency],
     ext_modules=ext_modules,
     libraries=ext_libraries,
+    cmdclass={"build_ext": BuildCAsCpp}, # for luaz8 only
     **extra_setup_args
 )

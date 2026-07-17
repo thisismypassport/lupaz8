@@ -17,9 +17,11 @@ MANIFEST
 *~
 *wheel*/
 venv*
+.venv*
 .eggs/
-lupa/version.py
-lupa/lua*.pyx
+lupaz8/version.py
+lupaz8/lua*.pyx
+lupaz8/lua*.cpp
 TEST/
 
 # Vim swapfiles

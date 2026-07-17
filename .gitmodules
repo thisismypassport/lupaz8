@@ -16,3 +16,6 @@
 [submodule "third-party/lua55"]
 	path = third-party/lua55
 	url = https://github.com/lua/lua.git
+[submodule "third-party/luaz8"]
+	path = third-party/luaz8
+	url = https://github.com/thisismypassport/z8lua
