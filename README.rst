@@ -1073,5 +1073,5 @@ configure the following options on setup:
    * - ``--no-bundle``
      - Don't use the bundled LuaJIT/Lua, search for an installed version of LuaJIT or Lua,
        e.g. using ``pkg-config``.
-   * - ``--no-lua-jit``
+   * - ``--no-luajit``
      - Don't use or search for LuaJIT, only use or search Lua instead.
