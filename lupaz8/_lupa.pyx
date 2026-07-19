@@ -277,6 +277,7 @@ cdef class LuaRuntime:
     cdef object _attribute_getter
     cdef object _attribute_setter
     cdef bint _unpack_returned_tuples
+    cdef bint _overflow_auto_handle
     cdef MemoryStatus _memory_status
 
     def __cinit__(self, encoding='UTF-8', source_encoding=None,
@@ -329,7 +330,11 @@ cdef class LuaRuntime:
         lua.luaL_openlibs(L)
         self.init_python_lib(register_eval, register_builtins)
 
-        self.set_overflow_handler(overflow_handler)
+        if overflow_handler == True:
+            self._overflow_auto_handle = True
+        else:
+            self._overflow_auto_handle = False
+            self.set_overflow_handler(overflow_handler)
 
         # lupa init done, set real limit
         if max_memory is not None:
@@ -1669,9 +1674,12 @@ cdef int py_to_lua(LuaRuntime runtime, lua_State *L, object o, bint wrap_none=Fa
             lua.lua_pushinteger(L, <lua.lua_Integer>o)
             pushed_values_count = 1
         except OverflowError:
-            pushed_values_count = py_to_lua_handle_overflow(runtime, L, o)
-            if pushed_values_count <= 0:
-                raise
+            if runtime._overflow_auto_handle:
+                pushed_values_count = py_to_lua_custom(runtime, L, o, 0)
+            else:
+                pushed_values_count = py_to_lua_handle_overflow(runtime, L, o)
+                if pushed_values_count <= 0:
+                    raise
     elif isinstance(o, bytes):
         lua.lua_pushlstring(L, <char*>(<bytes>o), len(<bytes>o))
         pushed_values_count = 1
