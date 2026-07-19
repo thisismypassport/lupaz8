@@ -2,6 +2,7 @@
 
 .tox
 .idea
+.vscode
 build
 dist
 MANIFEST

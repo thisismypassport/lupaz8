@@ -40,6 +40,9 @@ enable = [
 test-skip = ["*-macosx_*"]
 test-command = "python -c \"import lupaz8\" && python -c \"import lupaz8.luaz8\" "
 
+[tool.cibuildwheel.pyodide]
+build = "cp314-*"
+
 [tool.cibuildwheel.windows]
 archs = ["AMD64", "x86", "ARM64"]
 

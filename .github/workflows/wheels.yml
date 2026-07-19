@@ -2,6 +2,19 @@ name: Wheel build
 
 on:
   workflow_dispatch:
+    inputs:
+      build-limited:
+        type: boolean
+        description: Build limited api wheels
+        default: false
+      build-granular:
+        type: boolean
+        description: Build granular version wheels
+        default: false
+      build-pyodide:
+        type: boolean
+        description: Build the pyodide wheel
+        default: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
@@ -73,32 +86,118 @@ jobs:
           # Skip abi3 targets here:
           CIBW_SKIP: "cp31?-win_arm64  cp31?-win32"
 
+  build_wheels:
+    name: Build for ${{ matrix.only }}
+    needs: generate-wheels-matrix
+    runs-on: ${{ matrix.os }}
+    if: ${{ inputs.build-granular }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.generate-wheels-matrix.outputs.include) }}
+
+    env:
+      MACOSX_DEPLOYMENT_TARGET: '11.0'
+      LUPA_WITH_LUA_DLOPEN: ${{ startsWith(matrix.os, 'windows') && 'false' || 'true' }}
+      LUPA_NO_LUAJIT: ${{ contains(matrix.only, 'win_arm64') && 'true' || 'false' }}
+
+    steps:
+      - name: Check out project
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Check out submodules
+        run: git submodule update --init --recursive
+
+      - name: Set up QEMU
+        if: runner.os == 'Linux'
+        uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4.0.0
+        with:
+          platforms: all
+
+      - name: Install MacOS dependencies
+        if: runner.os == 'macOS'
+        run: |
+          brew install automake libtool
+          ln -s /usr/local/bin/glibtoolize /usr/local/bin/libtoolize
+
+      - name: Setup Visual Studio
+        if: contains(matrix.os, 'windows')
+        uses: TheMrMilchmann/setup-msvc-dev@79dac248aac9d0059f86eae9d8b5bfab4e95e97c # v4.0.0
+        with:
+          arch: ${{ contains(matrix.only, 'win_amd64') && 'x64' || contains(matrix.only, 'win32') && 'x86' || contains(matrix.only, 'arm') && 'arm64' || '' }}
+
+      - name: Fix link in Windows
+        if: contains(matrix.os, 'windows')
+        # Prevent 'link' from being found before 'link.exe'
+        shell: bash
+        run: rm -f /usr/bin/link
+
+      - name: Build wheels
+        uses: pypa/cibuildwheel@8d2b08b68458a16aeb24b64e68a09ab1c8e82084 # v3.4.1
+        with:
+          only: ${{ matrix.only }}
+
+      - name: Upload wheels
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          path: ./wheelhouse/*.whl
+          name: wheel-${{ matrix.only }}
+
   build_limited_api_wheels:
     name: Build ${{ matrix.target }} Stable ABI ${{ matrix.lapiversion }} wheels
+    if: ${{ inputs.build-limited }}
 
     strategy:
       fail-fast: false
       matrix:
         target:
+          # Smaller set of platforms that we only provide Stable ABI wheels for:
+          # lupaz8 - added all the arches from above too - as presumably that'd help things working
+          # even if I don't update the repo often
+          - 'manylinux_x86_64'
+          - 'musllinux_x86_64'
+          - 'manylinux_aarch64'
+          - 'musllinux_aarch64'
+          - 'manylinux_i686'
+          - 'musllinux_i686'
+          - 'manylinux_ppc64le'
+          - 'musllinux_ppc64le'
+          - 'manylinux_riscv64'
+          - 'musllinux_riscv64'
+          - 'manylinux_armv7l'
+          - 'musllinux_armv7l'
+          - 'macosx_x86_64'
+          - 'macosx_arm64'
+          - 'win32'
           - 'win_amd64'
+          - 'win_arm64'
         lapiversion:
           - "3.9"
           - "3.12"
 
         exclude:
           # Py3.9-abi3 on Windows lacks "PyThread" API.
+          - target: 'win32'
+            lapiversion: '3.9'
           - target: 'win_amd64'
             lapiversion: '3.9'
+          - target: 'win_arm64'
+            lapiversion: '3.9'
         include:
+          - target: 'win32'
+            lapiversion: '3.10'
           - target: 'win_amd64'
+            lapiversion: '3.10'
+          - target: 'win_arm64'
             lapiversion: '3.10'
 
     runs-on: ${{
       contains(matrix.target, 'aarch64') && 'ubuntu-24.04-arm' ||
       contains(matrix.target, 'armv7l') && 'ubuntu-24.04-arm' ||
       contains(matrix.target, 'win_arm64') && 'windows-11-arm' ||
-      contains(matrix.target, 'win32') && 'windows-latest' ||
       contains(matrix.target, 'win_amd64') && 'windows-latest' ||
+      contains(matrix.target, 'win32') && 'windows-latest' ||
       contains(matrix.target, 'macosx') && 'macos-latest' ||
       'ubuntu-latest'
       }}
@@ -152,3 +251,62 @@ jobs:
         with:
           name: wheels-Stable-ABI-${{ matrix.target }}-${{ matrix.lapiversion }}
           path: ./wheelhouse/*.whl
+
+  build-pyodide:
+    name: Build Pyodide wheels
+    runs-on: ubuntu-latest
+    if: ${{ inputs.build-pyodide }}
+
+    steps:
+      - name: Check out project
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Check out submodules
+        run: git submodule update --init --recursive
+
+      - name: Build wheels
+        uses: pypa/cibuildwheel@v4.1.0
+        env:
+          CIBW_PLATFORM: pyodide
+          
+      - name: Upload wheels
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: wheels-pyodide
+          path: wheelhouse/*.whl
+
+  validate_and_upload_wheels:
+    name: Validate and Upload Wheels
+    needs: [ build_wheels, build_limited_api_wheels, build-pyodide ]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download bdist files
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: wheels-*
+          path: ./dist_downloads
+          merge-multiple: true
+
+      - name: List downloaded artifacts
+        run: ls -la ./dist_downloads
+
+      - name: abi3audit wheels
+        run: |
+          python -m pip install -U abi3audit
+          ERRORS=0
+          for wheel in ./dist_downloads/*abi3*.whl; do abi3audit --strict --report ${wheel} || ERRORS=$((ERRORS + 1)); done
+          exit $ERRORS
+
+      - name: Twine-check wheels
+        run: |
+          python -m pip install -U twine packaging
+          ERRORS=0
+          for wheel in ./dist_downloads/*.whl; do twine check ${wheel} || ERRORS=$((ERRORS + 1)); done
+          exit $ERRORS
+
+      - name: Upload wheels
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: wheels
+          path: ./dist_downloads/*.whl
