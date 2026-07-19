@@ -4,7 +4,7 @@ import os
 import os.path as os_path
 import sys
 
-import lupa
+import lupaz8 as lupa
 
 
 class LupaTestCase(unittest.TestCase):
@@ -28,7 +28,7 @@ def find_lua_modules():
     for filename in os.listdir(os.path.dirname(os.path.dirname(__file__))):
         if not filename.startswith('lua'):
             continue
-        module_name = "lupa." + filename.partition('.')[0]
+        module_name = "lupaz8." + filename.partition('.')[0]
         if module_name in imported:
             continue
         try:
@@ -83,7 +83,7 @@ def suite():
     tests = []
     for filename in os.listdir(test_dir):
         if filename.endswith('.py') and not filename.startswith('_'):
-            tests.append('lupa.tests.'  + filename[:-3])
+            tests.append('lupaz8.tests.'  + filename[:-3])
 
     suite = unittest.defaultTestLoader.loadTestsFromNames(tests)
 

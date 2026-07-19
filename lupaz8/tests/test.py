@@ -8,9 +8,9 @@ import threading
 import time
 import unittest
 
-import lupa
-import lupa.tests
-from lupa.tests import LupaTestCase
+import lupaz8 as lupa
+import lupaz8.tests
+from lupaz8.tests import LupaTestCase
 
 try:
     import platform
@@ -2534,7 +2534,7 @@ class TestFastRLock(LupaTestCase):
         for filename in os.listdir(os.path.dirname(os.path.dirname(__file__))):
             if filename.startswith('lupa_lua'):
                 try:
-                    module_name = "lupa." + filename.partition('.')[0]
+                    module_name = "lupaz8." + filename.partition('.')[0]
                     self.FastRLock = __import__(module_name, fromlist='FastRLock', level=0).FastRLock
                 except ImportError:
                     pass

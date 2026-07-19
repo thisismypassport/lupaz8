@@ -297,17 +297,24 @@ def use_bundled_lua(path, macros):
             raise RuntimeError("Makefile of %s has unexpected format, found '%s'" % (
                 libname, obj_file))
 
+    # hacking for luaz8 and its cpp c files... (cross-platform solution, unlike previous...)
     lua_sources = [
-        os.path.splitext(obj_file)[0] + '.c' if obj_file != 'lj_vm.o' else 'lj_vm.s'
+        os.path.splitext(obj_file)[0] + '.cpp' #if obj_file != 'lj_vm.o' else 'lj_vm.s'
         for obj_file in obj_files
     ]
-    if libname == 'lua52':
-        lua_sources.extend(['lbitlib.c', 'lcorolib.c', 'lctype.c'])
+    #if libname == 'lua52':
+    #    lua_sources.extend(['lbitlib.c', 'lcorolib.c', 'lctype.c'])
     src_dir = os.path.dirname(makefile)
     rel_src_dir = os.path.relpath(src_dir, basedir)
+
+    os.makedirs(os.path.join(src_dir, "_cpp"), exist_ok=True)
+    for src in lua_sources:
+        shutil.copyfile(os.path.join(src_dir, os.path.splitext(src)[0] + ".c"),
+                        os.path.join(src_dir, "_cpp", src))
+
     ext_libraries = [
         [libname, {
-            'sources': [os.path.join(rel_src_dir, src) for src in lua_sources],
+            'sources': [os.path.join(rel_src_dir, "_cpp", src) for src in lua_sources],
             'include_dirs': [src_dir],
             'macros': macros,
         }]
@@ -436,7 +443,7 @@ def prepare_extensions(use_cython=True):
             sources=[dst] + (libs[0][1]['sources'] if libs else []),
             extra_objects=config.get('extra_objects'),
             include_dirs=config.get('include_dirs'),
-            extra_compile_args=['-std=c++17'], # for luaz8 only
+            extra_compile_args=['/std:c++17' if platform.startswith('win') else '-std=c++17'], # for luaz8 only
             language="c++", # for luaz8 only
             define_macros=c_defines,
             **extra_extension_args,
@@ -503,12 +510,6 @@ cython_dependency = ([
 
 # call distutils
 
-from setuptools.command.build_ext import build_ext
-class BuildCAsCpp(build_ext):
-    def build_extensions(self):
-        self.compiler.compiler_so = [self.compiler.compiler_so[0], "-x", "c++", *self.compiler.compiler_so[1:]]
-        super().build_extensions()
-
 setup(
     name="lupaz8",
     version=VERSION,
@@ -530,6 +531,5 @@ setup(
     setup_requires=[cython_dependency],
     ext_modules=ext_modules,
     libraries=ext_libraries,
-    cmdclass={"build_ext": BuildCAsCpp}, # for luaz8 only
     **extra_setup_args
 )

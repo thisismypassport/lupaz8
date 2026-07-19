@@ -26,18 +26,18 @@ all:  local
 local:
 	LUPA_WITH_LUA_DLOPEN=$(WITH_LUA_DLOPEN) ${PYTHON} setup.py build_ext --inplace $(WITH_PARALLEL) $(WITH_CYTHON)
 
-sdist dist/lupa-$(VERSION).tar.gz:
+sdist dist/lupaz8-$(VERSION).tar.gz:
 	${PYTHON} setup.py sdist
 
 test: local
-	PYTHONPATH=. $(PYTHON) -m unittest -v lupa.tests.suite
+	PYTHONPATH=. $(PYTHON) -m unittest -v lupaz8.tests.suite
 
 clean:
-	rm -fr build lupa/_lupa*.so lupa/lua*.pyx lupa/*.c
+	rm -fr build lupaz8/_lupa*.so lupaz8/lua*.pyx lupaz8/*.c
 	@for dir in third-party/*/; do $(MAKE) -C $${dir} clean; done
 
 realclean: clean
-	rm -fr lupa/_lupa.c
+	rm -fr lupaz8/_lupa.c
 
 wheel:
 	LUPA_WITH_LUA_DLOPEN=$(WITH_LUA_DLOPEN) $(PYTHON) setup.py build_ext $(WITH_PARALLEL) bdist_wheel $(WITH_CYTHON)
@@ -48,8 +48,8 @@ qemu-user-static:
 wheel_manylinux: $(addprefix wheel_,$(MANYLINUX_IMAGES))
 $(addprefix wheel_,$(filter-out %_x86_64, $(filter-out %_i686, $(MANYLINUX_IMAGES)))): qemu-user-static
 
-wheel_%: dist/lupa-$(VERSION).tar.gz
-	@echo "Building $(subst wheel_,,$@) wheels for Lupa $(VERSION)"
+wheel_%: dist/lupaz8-$(VERSION).tar.gz
+	@echo "Building $(subst wheel_,,$@) wheels for Lupaz8 $(VERSION)"
 	mkdir -p wheelhouse_$(subst wheel_,,$@)
 	time docker run --rm -t \
 		-v $(shell pwd):/io \
@@ -68,10 +68,10 @@ wheel_%: dist/lupa-$(VERSION).tar.gz
 				$$PYBIN/python -V; \
 				{ time $$PYBIN/pip wheel -v -w /io/$$WHEELHOUSE /io/$< & } ; \
 			done; wait; \
-			for whl in /io/$$WHEELHOUSE/lupa-$(VERSION)-*-linux_*.whl; do auditwheel repair $$whl -w /io/$$WHEELHOUSE; done; \
-			for whl in /io/$$WHEELHOUSE/lupa-$(VERSION)-*-m*linux*.whl; do \
-				pyver=$${whl#*/lupa-$(VERSION)-}; pyver=$${pyver%%-m*}; \
+			for whl in /io/$$WHEELHOUSE/lupaz8-$(VERSION)-*-linux_*.whl; do auditwheel repair $$whl -w /io/$$WHEELHOUSE; done; \
+			for whl in /io/$$WHEELHOUSE/lupaz8-$(VERSION)-*-m*linux*.whl; do \
+				pyver=$${whl#*/lupaz8-$(VERSION)-}; pyver=$${pyver%%-m*}; \
 				echo "Installing in $${pyver}: $${whl}"; \
-				/opt/python/$${pyver}/bin/python -m pip install -U $${whl} && /opt/python/$${pyver}/bin/python -c "import lupa" || exit 1; \
-				/opt/python/$${pyver}/bin/python -m pip uninstall -y lupa; \
+				/opt/python/$${pyver}/bin/python -m pip install -U $${whl} && /opt/python/$${pyver}/bin/python -c "import lupaz8" || exit 1; \
+				/opt/python/$${pyver}/bin/python -m pip uninstall -y lupaz8; \
 			done; true'
