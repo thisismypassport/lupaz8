@@ -182,6 +182,16 @@ def create_class(*bases):
                 init(*args, **kwargs)
     return Cls
 
+def tuple_values(src):
+    if isinstance(src, _LuaTable):
+        return tuple(src[i+1] for i in range(len(src)))
+    return tuple(src)
+
+def list_values(src):
+    if isinstance(src, _LuaTable):
+        return [src[i+1] for i in range(len(src))]
+    return list(src)
+
 @cython.no_gc_clear
 cdef class LuaRuntime:
     """The main entry point to the Lua runtime.
@@ -669,22 +679,14 @@ cdef class LuaRuntime:
             lua.lua_settop(L, old_top)
 
     @cython.final
-    cdef int add_py_closure(self, bytes name, lua.lua_CFunction cfunc) except -1:
-        cdef lua_State *L = self._state
-        lua.lua_pushlightuserdata(L, <void*>self)  # lib udata
-        lua.lua_pushcclosure(L, cfunc, 1)          # lib function
-        lua.lua_setfield(L, -2, name)              # lib
-
-    @cython.final
     cdef int init_python_lib(self, bint register_eval, bint register_builtins) except -1:
         cdef lua_State *L = self._state
 
         # create 'python' lib
         luaL_openlib(L, "python", py_lib, 0)       # lib
-
-        self.add_py_closure(b"args", py_args)
-        self.add_py_closure(b"list", py_list)
-        self.add_py_closure(b"dict", py_dict)
+        lua.lua_pushlightuserdata(L, <void*>self)  # lib udata
+        lua.lua_pushcclosure(L, py_args, 1)        # lib function
+        lua.lua_setfield(L, -2, "args")            # lib
 
         # register our own object metatable
         lua.luaL_newmetatable(L, POBJECT)          # lib metatbl
@@ -705,10 +707,14 @@ cdef class LuaRuntime:
             self.register_py_object(b'eval',     b'eval', eval)
         if register_builtins:
             self.register_py_object(b'builtins', b'builtins', builtins)
-        self.register_py_object(b'Py_Import', b'import', import_module)
-        self.register_py_object(b'isin', b'isin', lambda a, b: a in b)
-        self.register_py_object(b'Py_Class', b'class', create_class)
-        self.register_py_object(b'table', b'table', self.table_from)
+            self.register_py_object(b'tuple', b'tuple', tuple_values)
+            self.register_py_object(b'list', b'list', list_values)
+            self.register_py_object(b'dict', b'dict', dict)
+            self.register_py_object(b'set', b'set', set)
+            self.register_py_object(b'Py_Import', b'import', import_module)
+            self.register_py_object(b'isin', b'isin', lambda a, b: a in b)
+            self.register_py_object(b'Py_Class', b'class', create_class)
+            self.register_py_object(b'table', b'table', self.table_from)
 
         # pop 'python' lib
         lua.lua_pop(L, 1)
@@ -829,15 +835,15 @@ cdef Py_ssize_t get_object_length(LuaRuntime runtime, lua_State* L, int index) e
     return <Py_ssize_t>length
 
 
-cdef tuple unpack_lua_table(LuaRuntime runtime, lua_State* L, bint with_args=True, bint with_kwargs=True, bint with_any=False):
+cdef tuple unpack_lua_table(LuaRuntime runtime, lua_State* L):
     """Unpacks the table at the top of the stack into a tuple of positional arguments
     and a dictionary of keyword arguments.
     Preconditions:
         runtime must be locked
     """
     assert runtime is not None
-    cdef tuple args = None
-    cdef dict kwargs = {} if with_kwargs else None
+    cdef tuple args
+    cdef dict kwargs = {}
     cdef bytes source_encoding = runtime._source_encoding
     cdef int old_top
     cdef Py_ssize_t index, length
@@ -845,27 +851,21 @@ cdef tuple unpack_lua_table(LuaRuntime runtime, lua_State* L, bint with_args=Tru
     old_top = lua.lua_gettop(L)
     try:
         length = get_object_length(runtime, L, -1)
-        if with_args:
-            args = cpython.tuple.PyTuple_New(length)
+        args = cpython.tuple.PyTuple_New(length)
         lua.lua_pushnil(L)            # nil (first key)
         while lua.lua_next(L, -2):    # key value
             key = py_from_lua(runtime, L, -2)
             value = py_from_lua(runtime, L, -1)
             if isinstance(key, int) and not isinstance(key, bool):
-                if with_args:
-                    index = <Py_ssize_t>key
-                    if index < 1 or index > length:
-                        raise IndexError("table index out of range")
-                    cpython.ref.Py_INCREF(value)
-                    cpython.tuple.PyTuple_SET_ITEM(args, index-1, value)
-                elif with_kwargs:
-                    kwargs[key] = value
+                index = <Py_ssize_t>key
+                if index < 1 or index > length:
+                    raise IndexError("table index out of range")
+                cpython.ref.Py_INCREF(value)
+                cpython.tuple.PyTuple_SET_ITEM(args, index-1, value)
             elif isinstance(key, bytes):
-                if with_kwargs:
-                    kwargs[(<bytes>key).decode(source_encoding)] = value
-            elif isinstance(key, unicode) or with_any:
-                if with_kwargs:
-                    kwargs[key] = value
+                kwargs[(<bytes>key).decode(source_encoding)] = value
+            elif isinstance(key, unicode):
+                kwargs[key] = value
             else:
                 raise TypeError("table key is neither an integer nor a string")
             lua.lua_pop(L, 1)         # key
@@ -2615,52 +2615,6 @@ cdef int py_args(lua_State* L) noexcept nogil:
         return lua.luaL_error(L, "missing runtime")
     lua.luaL_checktype(L, 1, lua.LUA_TTABLE)
     result = py_args_with_gil(runtime, L)
-    if result < 0:
-        return lua.lua_error(L) # never returns!
-    return result
-
-cdef int py_list_with_gil(PyObject* runtime_obj, lua_State* L) noexcept with gil:
-    cdef LuaRuntime runtime
-    cdef tuple args
-    cdef dict kwargs
-    try:
-        runtime = <LuaRuntime?>runtime_obj
-        args, kwargs = unpack_lua_table(runtime, L, True, False)
-        return py_to_lua_custom(runtime, L, args, 0)
-    except:
-        try: runtime.store_raised_exception(L, b'error while calling python.list()')
-        finally: return -1
-
-cdef int py_list(lua_State* L) noexcept nogil:
-    cdef PyObject* runtime
-    runtime = <PyObject*>lua.lua_touserdata(L, lua.lua_upvalueindex(1))
-    if not runtime:
-        return lua.luaL_error(L, "missing runtime")
-    lua.luaL_checktype(L, 1, lua.LUA_TTABLE)
-    result = py_list_with_gil(runtime, L)
-    if result < 0:
-        return lua.lua_error(L) # never returns!
-    return result
-
-cdef int py_dict_with_gil(PyObject* runtime_obj, lua_State* L) noexcept with gil:
-    cdef LuaRuntime runtime
-    cdef tuple args
-    cdef dict kwargs
-    try:
-        runtime = <LuaRuntime?>runtime_obj
-        args, kwargs = unpack_lua_table(runtime, L, False, True, True)
-        return py_to_lua_custom(runtime, L, kwargs, 0)
-    except:
-        try: runtime.store_raised_exception(L, b'error while calling python.dict()')
-        finally: return -1
-
-cdef int py_dict(lua_State* L) noexcept nogil:
-    cdef PyObject* runtime
-    runtime = <PyObject*>lua.lua_touserdata(L, lua.lua_upvalueindex(1))
-    if not runtime:
-        return lua.luaL_error(L, "missing runtime")
-    lua.luaL_checktype(L, 1, lua.LUA_TTABLE)
-    result = py_dict_with_gil(runtime, L)
     if result < 0:
         return lua.lua_error(L) # never returns!
     return result
