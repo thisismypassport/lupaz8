@@ -275,8 +275,8 @@ jobs:
           name: wheels-pyodide
           path: wheelhouse/*.whl
 
-  validate_and_upload_wheels:
-    name: Validate and Upload Wheels
+  validate_wheels:
+    name: Validate Wheels
     needs: [ build_wheels, build_limited_api_wheels, build-pyodide ]
     runs-on: ubuntu-latest
 
@@ -313,7 +313,7 @@ jobs:
 
   publish_release_assets:
     name: Publish Release Wheels
-    needs: [ sdist, validate_and_upload_wheels ]
+    needs: [ sdist, validate_wheels ]
     runs-on: ubuntu-latest
 
     permissions:

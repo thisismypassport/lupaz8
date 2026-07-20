@@ -17,7 +17,7 @@ try:
 except ImportError:
     from distutils.core import setup, Extension
 
-VERSION = '2.8'
+VERSION = '2.8.0.1'
 
 extra_setup_args = {}
 
@@ -488,7 +488,7 @@ def write_file(filename, content):
 
 long_description = '\n\n'.join([
     read_file(os.path.join(basedir, text_file))
-    for text_file in ['README.rst', 'INSTALL.rst', 'CHANGES.rst', "LICENSE.txt"]])
+    for text_file in ['README.rst', "LICENSE.txt"]])
 
 write_file(os.path.join(basedir, 'lupaz8', 'version.py'), f"__version__ = '{VERSION}'\n")
 
