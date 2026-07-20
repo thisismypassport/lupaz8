@@ -2257,11 +2257,14 @@ cdef int py_object_len(lua_State* L) noexcept with gil: return py_object_op1(L, 
 cdef int py_object_unm(lua_State* L) noexcept with gil: return py_object_op1(L, lambda v: -v, b"-")
 cdef int py_object_not(lua_State* L) noexcept with gil: return py_object_op1(L, lambda v: ~v, b"~")
 
-cdef int py_op2_with_gil(lua_State* L, object callable, bytes desc, py_object* py_obj) noexcept with gil:
+cdef int py_op2_with_gil(lua_State* L, object callable, bytes desc, py_object* py_obj, int py_obj_idx) noexcept with gil:
     cdef LuaRuntime runtime
+    cdef object arg1, arg2
     try:
         runtime = <LuaRuntime?>py_obj.runtime
-        result = callable(<object>py_obj.obj, py_from_lua(runtime, L, 2))
+        arg1 = <object>py_obj.obj if py_obj_idx == 1 else py_from_lua(runtime, L, 1)
+        arg2 = <object>py_obj.obj if py_obj_idx == 2 else py_from_lua(runtime, L, 2)
+        result = callable(arg1, arg2)
         if not py_to_lua(runtime, L, result):
             raise TypeError(b"failed to convert result of " + desc)
         return 1
@@ -2270,8 +2273,12 @@ cdef int py_op2_with_gil(lua_State* L, object callable, bytes desc, py_object* p
         finally: return -1
 
 cdef int py_object_op2(lua_State* L, object callable, bytes desc) noexcept nogil:
-    cdef py_object* py_obj = unpack_python_argument_or_jump(L, 1) # may not return on error!
-    result = py_op2_with_gil(L, callable, desc, py_obj)
+    cdef py_object* py_obj = unpack_python_argument(L, 1, False)
+    cdef int py_obj_idx = 1
+    if py_obj == NULL:
+        py_obj = unpack_python_argument_or_jump(L, 2) # may not return on error!
+        py_obj_idx = 2
+    result = py_op2_with_gil(L, callable, desc, py_obj, py_obj_idx)
     if result < 0:
         return lua.lua_error(L)  # never returns!
     return result
@@ -2290,6 +2297,7 @@ cdef int py_object_or(lua_State* L) noexcept with gil: return py_object_op2(L, l
 cdef int py_object_xor(lua_State* L) noexcept with gil: return py_object_op2(L, lambda a,b: a^b, b"^")
 cdef int py_object_shl(lua_State* L) noexcept with gil: return py_object_op2(L, lambda a,b: a<<b, b"<<")
 cdef int py_object_shr(lua_State* L) noexcept with gil: return py_object_op2(L, lambda a,b: a>>b, b">>")
+cdef int py_object_concat(lua_State* L) noexcept with gil: return py_object_op2(L, lambda a,b: str(a)+str(b), b"..")
 
 # item access for Python objects
 #
@@ -2399,7 +2407,7 @@ cdef lua.luaL_Reg *py_object_lib = [
     lua.luaL_Reg(name = "__lt",       func = <lua.lua_CFunction> py_object_lt),
     lua.luaL_Reg(name = "__le",       func = <lua.lua_CFunction> py_object_le),
     lua.luaL_Reg(name = "__len",      func = <lua.lua_CFunction> py_object_len),
-    lua.luaL_Reg(name = "__concat",   func = <lua.lua_CFunction> py_object_add),
+    lua.luaL_Reg(name = "__concat",   func = <lua.lua_CFunction> py_object_concat),
     lua.luaL_Reg(name = "__unm",      func = <lua.lua_CFunction> py_object_unm),
     lua.luaL_Reg(name = "__not",      func = <lua.lua_CFunction> py_object_not),
     lua.luaL_Reg(name = "__add",      func = <lua.lua_CFunction> py_object_add),
@@ -2424,6 +2432,9 @@ cdef inline py_object* unpack_single_python_argument_or_jump(lua_State* L) noexc
     return unpack_python_argument_or_jump(L, 1)
 
 cdef inline py_object* unpack_python_argument_or_jump(lua_State* L, int n) noexcept nogil:
+    return unpack_python_argument(L, n, True)
+
+cdef inline py_object* unpack_python_argument(lua_State* L, int n, bint jump) noexcept nogil:
     cdef py_object* py_obj
 
     if lua.lua_isuserdata(L, n):
@@ -2432,8 +2443,13 @@ cdef inline py_object* unpack_python_argument_or_jump(lua_State* L, int n) noexc
         py_obj = unpack_wrapped_pyfunction(L, n)
 
     if not py_obj:
+        if not jump:
+            return NULL
         lua.luaL_argerror(L, n, "not a python object")   # never returns!
+    
     if not py_obj.obj:
+        if not jump:
+            return NULL
         lua.luaL_argerror(L, n, "deleted python object") # never returns!
 
     return py_obj
