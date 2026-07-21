@@ -445,7 +445,7 @@ cdef class LuaRuntime:
     cdef int store_raised_exception(self, lua_State* L, bytes lua_error_msg) except -1:
         try:
             self._raised_exception = tuple(exc_info())
-            py_to_lua(self, L, self._raised_exception[1])
+            lua.lua_pushlstring(L, lua_error_msg, len(lua_error_msg))
         except:
             lua.lua_pushlstring(L, lua_error_msg, len(lua_error_msg))
             raise
@@ -1861,7 +1861,12 @@ cdef int raise_lua_error(LuaRuntime runtime, lua_State* L, int result) except -1
         error_message = build_lua_error_message(runtime, L)
         if u"not enough memory" in error_message:
             raise LuaMemoryError(error_message)
-        raise LuaError(error_message)
+        if runtime._raised_exception:
+            exception = runtime._raised_exception
+            runtime._raised_exception = None
+            raise exception[1] from LuaError(error_message)
+        else:
+            raise LuaError(error_message)
 
 
 cdef bint _looks_like_traceback_line(unicode line) except -1:
@@ -1978,8 +1983,6 @@ cdef object execute_lua_call(LuaRuntime runtime, lua_State *L, Py_ssize_t nargs)
     runtime.clean_up_pending_unrefs()
     results = unpack_lua_results(runtime, L)
     if result_status:
-        if isinstance(results, BaseException):
-            runtime.reraise_on_exception()
         raise_lua_error(runtime, L, result_status)
     return results
 
