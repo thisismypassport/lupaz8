@@ -182,15 +182,15 @@ def create_class(*bases):
                 init(*args, **kwargs)
     return Cls
 
-def tuple_values(src):
+def tuple_values(src=None):
     if isinstance(src, _LuaTable):
         return tuple(src[i+1] for i in range(len(src)))
-    return tuple(src)
+    return tuple(src) if src != None else tuple()
 
-def list_values(src):
+def list_values(src=None):
     if isinstance(src, _LuaTable):
         return [src[i+1] for i in range(len(src))]
-    return list(src)
+    return list(src) if src != None else list()
 
 @cython.no_gc_clear
 cdef class LuaRuntime:
@@ -2654,7 +2654,9 @@ cdef int py_set_overflow_handler(lua_State* L) noexcept nogil:
 
 cdef lua.luaL_Reg *py_lib = [
     lua.luaL_Reg(name = "as_attrgetter",        func = <lua.lua_CFunction> py_as_attrgetter),
+    lua.luaL_Reg(name = "attrs",                func = <lua.lua_CFunction> py_as_attrgetter),
     lua.luaL_Reg(name = "as_itemgetter",        func = <lua.lua_CFunction> py_as_itemgetter),
+    lua.luaL_Reg(name = "items",                func = <lua.lua_CFunction> py_as_itemgetter),
     lua.luaL_Reg(name = "as_function",          func = <lua.lua_CFunction> py_as_function),
     lua.luaL_Reg(name = "iter",                 func = <lua.lua_CFunction> py_iter),
     lua.luaL_Reg(name = "iterex",               func = <lua.lua_CFunction> py_iterex),
